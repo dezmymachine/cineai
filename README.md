@@ -57,7 +57,7 @@ A modern, ChatGPT-like interface for discovering movies and TV shows using natur
 
 5. **Open your browser**
    
-   Navigate to [http://localhost:3000](http://localhost:3000)
+   Navigate to [http://localhost:5173](http://localhost:5173)
 
 ## 🔑 API Setup
 
@@ -265,4 +265,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ---
 
-**Built with ❤️ using React Router 7 (framework_mode) and AI**
+**Built with using [React Router 7](https://reactrouter.com) (framework mode) and AI**
