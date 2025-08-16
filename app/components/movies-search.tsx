@@ -1,3 +1,4 @@
+
 import type React from "react"
 import { useState, useEffect } from "react"
 import axios, { type AxiosResponse } from "axios"
@@ -24,6 +25,7 @@ interface Movie {
   overview: string
   vote_average: number
   media_type?: string
+  adult?: boolean
 }
 
 interface TMDBGenresResponse {
@@ -108,6 +110,7 @@ export default function MovieSearchApp() {
     try {
       const response: AxiosResponse<TMDBGenresResponse> = await tmdbApi.get(`/genre/movie/list?api_key=${TMDB_API_KEY}`)
       setTmdbData((prev) => ({ ...prev, genres: response.data.genres }))
+      // console.log("Fetched TMDB genres:", response.data.genres)
     } catch (err) {
       console.error("Error fetching TMDB genres:", err)
       setError("Could not load genre data.")
@@ -147,13 +150,20 @@ export default function MovieSearchApp() {
       return null
     }
 
+    const validGenres = tmdbData.genres.map(g => g.name).join(", ")
+
     const prompt = `
       You are a movie and TV show search assistant. Based on the user's sentence,
       identify the type, genres, keywords, and year.
+      Only use genres from this exact list: ${validGenres}.
+      If no genre matches the list, use an empty array for genres.
+      If the user doesn't specify tv or movie, default to "movie".
       Input: "I'm in the mood for a recent action-packed movie with lots of fighting"
       -> {"type":"movie","genres":["Action"],"keywords":["fighting"],"year":2024}
       Input: "Suggest a family-friendly animated series from the 90s"
       -> {"type":"tv","genres":["Animation","Family"],"keywords":["friendly"],"year":1990}
+      Input: "Show me some horror films"
+      -> {"type":"movie","genres":["Horror"],"keywords":[]}
       Input: "${userText}"
     `
 
@@ -188,7 +198,7 @@ export default function MovieSearchApp() {
       return JSON.parse(jsonText) as QueryParams
     } catch (err) {
       console.error("Error calling Gemini API:", err)
-      setError("Failed to import.meta your request.")
+      setError("Failed to process your request.")
       return null
     }
   }
@@ -234,6 +244,10 @@ export default function MovieSearchApp() {
         ...(keywordIds && { with_keywords: keywordIds }),
       }
 
+      if (type === "movie") {
+        params.include_adult = "false"
+      }
+
       const response: AxiosResponse<TMDBDiscoverResponse> = await tmdbApi.get(
         `/discover/${type}?api_key=${TMDB_API_KEY}`,
         {
@@ -241,7 +255,12 @@ export default function MovieSearchApp() {
         },
       )
 
-      const moviesWithType = response.data.results.slice(0, 20).map((movie) => ({
+      let results = response.data.results
+      if (type === "movie") {
+        results = results.filter((movie) => !movie.adult)
+      }
+
+      const moviesWithType = results.slice(0, 50).map((movie) => ({
         ...movie,
         media_type: type,
       }))
@@ -264,6 +283,14 @@ export default function MovieSearchApp() {
     return `${baseUrl}/${mediaType}/${movie.id}`
   }
 
+  const handleGenreClick = (genreName: string) => {
+    setUserText((prev) => {
+      if (!prev) return genreName
+      if (prev.toLowerCase().includes(genreName.toLowerCase())) return prev
+      return `${prev}, ${genreName}`
+    })
+  }
+
   useEffect(() => {
     fetchTMDBGenres()
   }, [])
@@ -279,8 +306,8 @@ export default function MovieSearchApp() {
       </div>
 
       {/* Scrollable Content Area */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-4xl mx-auto p-3 sm:p-4 pb-32">
+      <div className="flex-1 overflow-y-auto pb-20 sm:pb-24">
+        <div className="max-w-4xl mx-auto p-3 sm:p-4">
           {/* Welcome State */}
           {!loading && movies.length === 0 && !error && (
             <div className="text-center py-12 sm:py-16">
@@ -291,7 +318,7 @@ export default function MovieSearchApp() {
               </p>
 
               {/* Example searches */}
-              <div className="flex flex-wrap gap-2 justify-center max-w-md mx-auto">
+              <div className="flex flex-wrap gap-2 justify-center max-w-md mx-auto mb-6">
                 {["Recent sci-fi movies", "90s comedy series", "Action movies with cars"].map((example) => (
                   <Button
                     key={example}
@@ -304,6 +331,26 @@ export default function MovieSearchApp() {
                   </Button>
                 ))}
               </div>
+
+              {/* Genre selection buttons */}
+              {tmdbData.genres.length > 0 && (
+                <div className="mt-6">
+                  <h3 className="text-sm font-medium mb-2 text-foreground">Choose a genre to get started</h3>
+                  <div className="flex flex-wrap gap-2 justify-center">
+                    {tmdbData.genres.map((genre) => (
+                      <Button
+                        key={genre.id}
+                        variant="outline"
+                        size="sm"
+                        className="text-xs"
+                        onClick={() => handleGenreClick(genre.name)}
+                      >
+                        {genre.name}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -439,7 +486,7 @@ export default function MovieSearchApp() {
       </div>
 
       {/* Fixed Bottom Search Bar */}
-      <div className="flex-shrink-0 border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="fixed bottom-0 left-0 w-full border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-10">
         <div className="max-w-4xl mx-auto p-3 sm:p-4">
           <form onSubmit={handleSearch} className="flex gap-2">
             <div className="flex-1">
@@ -448,7 +495,7 @@ export default function MovieSearchApp() {
                 value={userText}
                 onChange={(e) => setUserText(e.target.value)}
                 placeholder="Describe what you want to watch..."
-                className="text-sm"
+                className="text-base" // Increased font size to prevent iOS zoom on focus
                 disabled={loading}
               />
             </div>
